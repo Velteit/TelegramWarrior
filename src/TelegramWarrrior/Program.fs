@@ -1,6 +1,7 @@
 // vim: noai:ts=2:sw=2
 
 open System
+open System.Globalization
 open System.Collections.Generic
 open System.Diagnostics
 open Funogram.Bot
@@ -8,6 +9,24 @@ open Funogram.Api
 open FSharpPlus
 open System.Text.RegularExpressions
 open Thoth.Json.Net
+
+module Decode =
+  open Newtonsoft.Json
+  open Newtonsoft.Json.Linq
+
+  let inline isString (token: JsonValue) = not(isNull token) && token.Type = JTokenType.String
+  let inline asString (token: JsonValue): string = token.Value<string>()
+
+  let customDateTime (pattern: string) : Decoder<DateTime> =
+    fun path value ->
+      if (isString value) then
+        match DateTime.TryParseExact(asString value, pattern, CultureInfo.InvariantCulture, DateTimeStyles.None) with
+        | true, x -> x.ToUniversalTime() |> Ok
+        | _ -> (path, BadPrimitive("a datetime", value)) |> Error
+      else
+        (path, BadPrimitive("a datetime", value)) |> Error
+
+
 
 let (|Regex|_|) pattern input =
   let m = Regex.Match(input, pattern)
@@ -44,9 +63,9 @@ type Task =
     Decode.object
       (fun get ->
         { Id = get.Required.Field "id" Decode.int
-          Due = get.Optional.Field "due" Decode.datetime
-          End = get.Optional.Field "end" Decode.datetime
-          Entry = get.Required.Field "entry" Decode.datetime
+          Due = get.Optional.Field "due" (Decode.customDateTime "yyyyMMddTHHmmssK")
+          End = get.Optional.Field "end" (Decode.customDateTime "yyyyMMddTHHmmssK")
+          Entry = get.Required.Field "entry" (Decode.customDateTime "yyyyMMddTHHmmssK")
           Project = get.Optional.Field "project" Decode.string
           Description = get.Optional.Field "description" Decode.string
           Tags = get.Optional.Field "tags" (Decode.list Decode.string)
@@ -150,7 +169,7 @@ let main argv =
   let tasks = List<Task>();
   taskExport ["+work"] [(fun _ args -> Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks.Add(task) | Error(e) -> printf "%s" e))] (fun ex -> printfn "%s" ex.Message)
   for task in tasks do
-    printf "%d %s " task.Id (task.Description |> Option.defaultValue "")
+    printfn "%d %s " task.Id (task.Description |> Option.defaultValue "")
   // startBot { defaultConfig with Token = "763014420:AAG2BE6MOQR5T6l3n5gwutDOfEZmyGCHUIw" } onUpdate None
   // |> Async.RunSynchronously
   // |> ignore
