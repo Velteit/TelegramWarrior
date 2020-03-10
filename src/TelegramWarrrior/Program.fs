@@ -143,7 +143,7 @@ type Task =
           Status = get.Optional.Field "status" Status.Decoder;
           Annotations = get.Optional.Field "annotations" (Decode.list Annotation.Decoder)
                         |> Option.defaultValue [];
-          UDAs = get.Required.Field "$" (Decode.tuples exceptNames Decode.string) ;  })
+          UDAs = get.Required.Field "$.*" (Decode.tuples exceptNames Decode.string) ;  })
 
 let taskExport (arguments: string list) (handlers: (obj -> DataReceivedEventArgs -> unit) list) (exceptionHandler: Exception -> unit) =
   let startInfo =
