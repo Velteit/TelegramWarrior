@@ -1,13 +1,13 @@
 // vim: noai:ts=2:sw=2
 
 open System
+open System.Collections.Generic
 open System.Diagnostics
 open Funogram.Bot
 open Funogram.Api
 open FSharpPlus
 open System.Text.RegularExpressions
-open System.Text.RegularExpressions
-open Newtonsoft.Json
+open Thoth.Json.Net
 
 let (|Regex|_|) pattern input =
   let m = Regex.Match(input, pattern)
@@ -18,22 +18,43 @@ type Prioriy =
   | H
   | M
   | L
+  // static member Decode : Decoder<Prioriy> =
+  //   Decode.fromString
+
+type Status =
+  | Active
+  | Deleted
+  | Completed
+
+
 
 type Task =
   { Id: int32;
-    Age: string;
+    Due: DateTime option;
+    End: DateTime option;
+    Entry: DateTime;
     Priority: Prioriy option;
     Project: string option;
     Tags: string list;
     Description: string option;
+    Status: Status option
     Urgency: float;
-    UDAs: string list }
-  member _.FromJson str =
-    use reader = new JsonTextReader(str)
-
-    reader.Read();
-
-
+    UDAs: (string * string) list }
+  static member Decoder : Decoder<Task> =
+    Decode.object
+      (fun get ->
+        { Id = get.Required.Field "id" Decode.int
+          Due = get.Optional.Field "due" Decode.datetime
+          End = get.Optional.Field "end" Decode.datetime
+          Entry = get.Required.Field "entry" Decode.datetime
+          Project = get.Optional.Field "project" Decode.string
+          Description = get.Optional.Field "description" Decode.string
+          Tags = get.Optional.Field "tags" (Decode.list Decode.string)
+                |> Option.defaultValue []
+          Urgency = get.Required.Field "urgency" Decode.float
+          Priority = None
+          Status = None
+          UDAs = []  })
 
 let taskExport (arguments: string list) (handlers: (obj -> DataReceivedEventArgs -> unit) list) (exceptionHandler: Exception -> unit) =
   let startInfo =
@@ -126,7 +147,10 @@ let onUpdate (context: UpdateContext) =
 
 [<EntryPoint>]
 let main argv =
-  taskExport ["+work"] [(fun _ args -> printfn "%s" args.Data)] (fun ex -> printfn "%s" ex.Message)
+  let tasks = List<Task>();
+  taskExport ["+work"] [(fun _ args -> Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks.Add(task) | Error(e) -> printf "%s" e))] (fun ex -> printfn "%s" ex.Message)
+  for task in tasks do
+    printf "%d %s " task.Id (task.Description |> Option.defaultValue "")
   // startBot { defaultConfig with Token = "763014420:AAG2BE6MOQR5T6l3n5gwutDOfEZmyGCHUIw" } onUpdate None
   // |> Async.RunSynchronously
   // |> ignore
