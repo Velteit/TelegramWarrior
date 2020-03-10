@@ -26,6 +26,27 @@ module Decode =
       else
         (path, BadPrimitive("a datetime", value)) |> Error
 
+  let tuples (except: string list) (decoder: Decoder<'t>): Decoder<(string * 't) list> =
+    fun path value ->
+      let rec gen (result: (string * 't) list) = function
+        | head::tail ->
+          match decoder (sprintf "%s.%s" path head) value with
+          | Ok(e) ->  gen ((head, e)::result) tail
+          | _ -> gen result tail
+        | [] -> result
+
+
+      let keys =
+        Decode.fromValue "$.*~" (Decode.list Decode.string) value
+        |> Result.map (fun keys ->
+          for key in keys do
+            printfn "%s" key
+          keys
+          |> List.except except )
+
+      keys |> Result.map (fun keys -> gen [] keys) |> Result.mapError(fun e -> (e, BadPrimitive("a cake ", value)))
+
+
 
 
 let (|Regex|_|) pattern input =
@@ -37,20 +58,58 @@ type Prioriy =
   | H
   | M
   | L
-  // static member Decode : Decoder<Prioriy> =
-  //   Decode.fromString
+  static member Decoder : Decoder<Prioriy> =
+    fun path value ->
+      if (Decode.isString value) then
+        match (Decode.asString >> String.toUpper) value with
+        | "H" -> Ok Prioriy.H
+        | "M" -> Ok Prioriy.M
+        | "L" -> Ok Prioriy.L
+        | _ -> (path, BadPrimitive("a priority", value)) |> Error
+      else
+        (path, BadPrimitive("a priority", value)) |> Error
+
 
 type Status =
-  | Active
+  | Pending
   | Deleted
   | Completed
+  | Waiting
+  | Recurring
+  static member Decoder : Decoder<Status> =
+    fun path value ->
+      if (Decode.isString value) then
+        match (Decode.asString >> String.toLower) value with
+        | "pending" -> Ok Status.Pending
+        | "deleted" -> Ok Status.Deleted
+        | "completed" -> Ok Status.Completed
+        | "waiting" -> Ok Status.Waiting
+        | "recurring" -> Ok Status.Recurring
+        | _ -> (path, BadPrimitive("a priority", value)) |> Error
+      else
+        (path, BadPrimitive("a priority", value)) |> Error
 
+type Annotation =
+  { Entry: DateTime;
+    Description: string; }
+  static member Decoder: Decoder<Annotation> =
+    Decode.object
+      (fun get ->
+        { Entry = get.Required.Field "entry" (Decode.customDateTime "yyyyMMddTHHmmssK")
+          Description = get.Required.Field "description" Decode.string  })
 
+let exceptNames = ["id"; "urgency"; "uuid"; "entry"; "due"; "end"; "start"; "until"; "wait"; "modified"; "scheduled"; "project"; "description"; "mask"; "tags"; "priority"; "status"; "annotations"]
 
 type Task =
   { Id: int32;
+    Uid: Guid;
     Due: DateTime option;
     End: DateTime option;
+    Start: DateTime option;
+    Until: DateTime option;
+    Scheduled: DateTime option;
+    Wait: DateTime option;
+    Modified: DateTime option;
     Entry: DateTime;
     Priority: Prioriy option;
     Project: string option;
@@ -58,22 +117,33 @@ type Task =
     Description: string option;
     Status: Status option
     Urgency: float;
-    UDAs: (string * string) list }
+    Annotations: Annotation list;
+    Mask: string option;
+    UDAs: (string * string) list; }
   static member Decoder : Decoder<Task> =
     Decode.object
       (fun get ->
-        { Id = get.Required.Field "id" Decode.int
-          Due = get.Optional.Field "due" (Decode.customDateTime "yyyyMMddTHHmmssK")
-          End = get.Optional.Field "end" (Decode.customDateTime "yyyyMMddTHHmmssK")
-          Entry = get.Required.Field "entry" (Decode.customDateTime "yyyyMMddTHHmmssK")
-          Project = get.Optional.Field "project" Decode.string
-          Description = get.Optional.Field "description" Decode.string
+        { Id = get.Required.Field "id" Decode.int;
+          Urgency = get.Required.Field "urgency" Decode.float;
+          Uid = get.Required.Field "uuid" Decode.guid;
+          Entry = get.Required.Field "entry" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Due = get.Optional.Field "due" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          End = get.Optional.Field "end" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Start = get.Optional.Field "start" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Until = get.Optional.Field "until" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Wait = get.Optional.Field "wait" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Modified = get.Optional.Field "modified" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Scheduled = get.Optional.Field "scheduled" (Decode.customDateTime "yyyyMMddTHHmmssK");
+          Project = get.Optional.Field "project" Decode.string;
+          Description = get.Optional.Field "description" Decode.string;
+          Mask = get.Optional.Field "mask" Decode.string;
           Tags = get.Optional.Field "tags" (Decode.list Decode.string)
-                |> Option.defaultValue []
-          Urgency = get.Required.Field "urgency" Decode.float
-          Priority = None
-          Status = None
-          UDAs = []  })
+                 |> Option.defaultValue [];
+          Priority = get.Optional.Field "priority" (Prioriy.Decoder);
+          Status = get.Optional.Field "status" Status.Decoder;
+          Annotations = get.Optional.Field "annotations" (Decode.list Annotation.Decoder)
+                        |> Option.defaultValue [];
+          UDAs = get.Required.Field "$" (Decode.tuples exceptNames Decode.string) ;  })
 
 let taskExport (arguments: string list) (handlers: (obj -> DataReceivedEventArgs -> unit) list) (exceptionHandler: Exception -> unit) =
   let startInfo =
@@ -167,9 +237,18 @@ let onUpdate (context: UpdateContext) =
 [<EntryPoint>]
 let main argv =
   let tasks = List<Task>();
-  taskExport ["+work"] [(fun _ args -> Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks.Add(task) | Error(e) -> printf "%s" e))] (fun ex -> printfn "%s" ex.Message)
+  taskExport ["+work"] [(fun _ args -> if (not << String.IsNullOrEmpty) args.Data then Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks.Add(task) | Error(e) -> printf "%s" e))] (fun ex -> printfn "%s" ex.Message)
+
   for task in tasks do
     printfn "%d %s " task.Id (task.Description |> Option.defaultValue "")
+
+  let tags = tasks |> Seq.collect (fun task -> task.Tags) |> Seq.distinct
+
+  for tag in tags do
+    printfn "%s" tag
+  for task in tasks do
+    for (key,value) in task.UDAs do
+      printfn "%s: %s" key value
   // startBot { defaultConfig with Token = "763014420:AAG2BE6MOQR5T6l3n5gwutDOfEZmyGCHUIw" } onUpdate None
   // |> Async.RunSynchronously
   // |> ignore
