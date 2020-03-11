@@ -28,23 +28,23 @@ module Decode =
 
   let tuples (except: string list) (decoder: Decoder<'t>): Decoder<(string * 't) list> =
     fun path value ->
+      let json = (value :?> JObject)
+      let properties = [
+        for property in json.Properties() do
+          if (not (List.contains property.Name except)) then
+            yield (property.Name, property.Value)
+      ]
+
       let rec gen (result: (string * 't) list) = function
-        | head::tail ->
-          match decoder (sprintf "%s.%s" path head) value with
-          | Ok(e) ->  gen ((head, e)::result) tail
+        | (key, value)::tail ->
+          match decoder (sprintf "%s.%s" path key) value with
+          | Ok(e) ->  gen ((key, e)::result) tail
           | _ -> gen result tail
         | [] -> result
 
-
-      let keys =
-        Decode.fromValue "$.*~" (Decode.list Decode.string) value
-        |> Result.map (fun keys ->
-          for key in keys do
-            printfn "%s" key
-          keys
-          |> List.except except )
-
-      keys |> Result.map (fun keys -> gen [] keys) |> Result.mapError(fun e -> (e, BadPrimitive("a cake ", value)))
+      properties
+      |> gen []
+      |> Result.Ok
 
 
 
@@ -143,7 +143,7 @@ type Task =
           Status = get.Optional.Field "status" Status.Decoder;
           Annotations = get.Optional.Field "annotations" (Decode.list Annotation.Decoder)
                         |> Option.defaultValue [];
-          UDAs = get.Required.Field "$.*" (Decode.tuples exceptNames Decode.string) ;  })
+          UDAs = get.Required.Raw (Decode.tuples exceptNames Decode.string) ;  })
 
 let taskExport (arguments: string list) (handlers: (obj -> DataReceivedEventArgs -> unit) list) (exceptionHandler: Exception -> unit) =
   let startInfo =
