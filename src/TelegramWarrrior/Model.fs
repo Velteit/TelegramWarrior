@@ -5,6 +5,7 @@ module TelegramWarrrior.Model
 open System
 open FSharpPlus
 open Thoth.Json.Net
+open TelegramWarrrior.Json.Net
 
 type Prioriy =
   | H

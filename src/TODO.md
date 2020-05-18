@@ -1,5 +1,14 @@
 # TODO
 
+- [ ] Lenses
+- [ ] Tasks sync
+- [ ] Show Task
+    - [ ] Base Properties
+        - [x] Id
+        - [x] Description
+        - [x] Tags
+    - [ ] UDAs
+    - [ ] Annotations
 - [ ] ADD
     - [ ] Wizard
     - [ ] Fast

@@ -1,4 +1,4 @@
-module Utils
+module TelegramWarrrior.Utils
 
 open System.Text.RegularExpressions
 

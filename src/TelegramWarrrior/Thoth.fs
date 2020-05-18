@@ -1,6 +1,6 @@
 // vim: noai:ts=2:sw=2
 
-module Thoth.Json.Net
+module TelegramWarrrior.Json.Net
 
 open Thoth.Json.Net
 open System

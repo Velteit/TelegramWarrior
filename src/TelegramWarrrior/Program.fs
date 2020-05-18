@@ -1,14 +1,14 @@
 // vim: noai:ts=2:sw=2
 
+module TelegramWarrrior.EntryPoint
+
 open System
-open System.Globalization
-open System.Collections.Generic
 open Funogram.Bot
 open Funogram.Api
-open FSharpPlus
 open Thoth.Json.Net
+open FSharpPlus
+open TelegramWarrrior.Utils
 open TelegramWarrrior.Model
-open Utils
 
 
 let onHello context =
@@ -24,6 +24,12 @@ let onHello context =
   }
   |> ignore
 
+let markup (task: Task) =
+  sprintf """Id: %d
+Description: %s
+Tags: [%s]
+""" (task.Id) (task.Description |> Option.defaultValue "") (String.Join(", ", task.Tags))
+
 let onStart context =
   ()
 
@@ -38,58 +44,50 @@ let onTask context =
   }
   |> ignore
 
-let onTaskList context =
+let onTaskList (tasks: Task list) context =
   monad' {
     let! message = context.Update.Message;
-    let! text = message.Text;
+    // let! text = message.Text;
 
-    printfn "%s" text
-
-    let printMessage _ (e: DataReceivedEventArgs) =
-      printfn "%s" e.Data
-      //e.Data
-      //|> sendMessage message.Chat.Id
-      //|> api context.Config
-      //|> Async.Ignore
-      //|> Async.Start
-    ()
-//ex.Message
-//    |> sendMessage message.Chat.Id
-//    |> api context.Config
-//    |> Async.Ignore
-//    |> Async.Start
+    // TODO lenses
+    tasks
+    |> List.where (fun t -> t.Status |> Option.map (fun s -> s = Status.Pending) |> Option.defaultValue false)
+    |> List.sortBy (fun t -> t.Id)
+    |> List.iter (
+      fun task ->
+        task
+        |> markup
+        |> sendMessage message.Chat.Id
+        |> api context.Config
+        |> Async.Ignore
+        |> Async.Start
+      )
   }
   |> ignore
 
 
-let onUpdate (context: UpdateContext) =
+let onUpdate (tasks: Task list) (context: UpdateContext) =
   processCommands context [
-    cmd "/hello" onHello
     cmd "/start" onStart
     cmd "/help" onHelp
-    cmd "/task" onTask
-    cmd "/task list" onTaskList
+    cmd "/list" (onTaskList tasks)
   ]
   |> ignore
 
 
 [<EntryPoint>]
 let main argv =
-  let tasks = List<Task>();
-  Process.run ["+work"; "export"] [(fun _ args -> if (not << String.IsNullOrEmpty) args.Data then Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks.Add(task) | Error(e) -> printf "%s" e))] (fun ex -> printfn "%s" ex.Message)
+  let mutable tasks : Task list = [];
+  Process.run
+    "task"
+    ["export"]
+    [(fun _ args ->
+        printfn "%s" args.Data
+        if (not << String.IsNullOrEmpty) args.Data then Decode.fromString Task.Decoder args.Data |> (function | Ok(task) -> tasks <- task::tasks | Error(e) -> printf "%s" e))]
+    (fun ex -> printfn "%s" ex.Message)
 
-  for task in tasks do
-    printfn "%d %s " task.Id (task.Description |> Option.defaultValue "")
-
-  let tags = tasks |> Seq.collect (fun task -> task.Tags) |> Seq.distinct
-
-  for tag in tags do
-    printfn "%s" tag
-  for task in tasks do
-    for (key,value) in task.UDAs do
-      printfn "%s: %s" key value
-  // startBot { defaultConfig with Token = "763014420:AAG2BE6MOQR5T6l3n5gwutDOfEZmyGCHUIw" } onUpdate None
-  // |> Async.RunSynchronously
-  // |> ignore
+  startBot { defaultConfig with Token = "763014420:AAG2BE6MOQR5T6l3n5gwutDOfEZmyGCHUIw" } (onUpdate tasks) None
+  |> Async.RunSynchronously
+  |> ignore
 
   0 // return an integer exit code
