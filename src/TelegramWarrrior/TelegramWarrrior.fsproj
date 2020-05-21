@@ -13,9 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="FSharpPlus" Version="1.0.0" />
-    <PackageReference Include="funogram" Version="1.3.3" />
-    <PackageReference Include="Thoth.Json.Net" Version="4.0.0" />
+    <PackageReference Include="FSharpPlus" Version="1.1.1" />
+    <PackageReference Include="funogram" Version="2.0.1" />
+    <PackageReference Include="funogram.telegram" Version="4.4.2" />
+    <PackageReference Include="Thoth.Json.Net" Version="4.1.0" />
 
   </ItemGroup>
 
