@@ -14,6 +14,9 @@ open TelegramWarrrior.Utils
 open TelegramWarrrior.Model
 open System.Text.RegularExpressions
 
+let tee f a =
+  f a
+  a
 
 let getTasks () =
   let mutable tasks : Task list = []
@@ -62,21 +65,29 @@ let onTask context =
   }
   |> ignore
 
-let onTaskList (arguments: (string * string list) list)  context =
+let onTaskList (arguments: Map<string, string list>)  context =
   monad' {
     let! tasks = getTasks()
     let! message = context.Update.Message;
     // let! text = message.Text;
 
-    for arg in arguments do
-      printf "%s: [" (fst arg)
-      for value in (snd arg) do
-        printf " %s" value
-      printfn "]"
+    let tagsOpt =
+      arguments
+      |> Map.tryFind "tags"
+      |> Option.map (fun tags -> tags |> List.map (fun tag -> tag.Substring(1)))
 
     // TODO lenses
     tasks
     |> List.where (fun t -> t.Status |> Option.map (fun s -> s = Status.Pending) |> Option.defaultValue false)
+    |> (fun list ->
+      tagsOpt
+      |> tee (Option.iter (fun tags -> for tag in tags do printf "%s" tag))
+      |> Option.map (fun tags ->
+        list
+        |> List.where (fun task -> task.Tags |> List.exists (fun t -> List.contains t tags))
+      )
+      |> Option.defaultValue list
+    )
     |> List.sortBy (fun t -> t.Id)
     |> List.iter (
       fun task ->
@@ -99,27 +110,16 @@ let success (group: Group) =
 let captureGetValue (c: Capture) =
   c.Value
 
-let tee f a =
-  f a
-  a
 
 let group (group: Group) : string * string list =
   (group.Name, [for c in group.Captures -> c.Value])
 
-let regexCmd (pattern: Regex) (handler: (string * string list) list -> UpdateContext -> unit) (context: UpdateContext) =
+let regexCmd (pattern: Regex) (handler: Map<string, string list> -> UpdateContext -> unit) (context: UpdateContext) =
   context.Update.Message
   |> Option.bind (fun message -> getTextForCommand context.Me message.Text)
-  // |> tee (Option.iter (printfn "Message: %s"))
   |> Option.map (fun cmd -> pattern.Matches cmd)
-  // |> tee (Option.iter (fun matches -> for m in matches do for g in m.Groups do for c in g.Captures do printfn "notice me! %s: %s" g.Name c.Value))
-  // |> Option.map (Array.ofSeq)
-  // |> Option.map (Array.collect groups)
-  // |> Option.map (Array.filter success)
-  // |> Option.map (Array.map group)
-  // |> Option.map (Array.groupBy fst)
-  // |> Option.map (Array.map (fun t -> (fst t, snd t |> Array.map snd |> Array.collect Array.ofList |> List.ofArray )))
-  // |> Option.map (List.ofArray)
   |> Option.map (fun matches -> [for g in (matches |> Seq.collect (fun m -> m.Groups)) -> (g.Name, [for c in g.Captures -> c.Value])])
+  |> Option.map (fun groups -> groups |> Map.ofList)
   |> Option.map (fun m -> handler m context)
   |> Option.isSome
   |> not
@@ -129,8 +129,8 @@ let onUpdate (context: UpdateContext) =
     cmd "/start" onStart
     cmd "/help" onHelp
     // regexCmd (Regex("/list (?<tags>\+[a-z]*) (?<>)", RegexOptions.Compiled)) (onTaskList)
-    regexCmd (Regex("/list( ?(?<tags>\\+[a-z]*) ?)+( ?due:(?<due>[0-9][0-9]))", RegexOptions.Compiled)) (onTaskList)
-    cmd "/list" (onTaskList [])
+    regexCmd (Regex("/list( ?(?<tags>\\+[a-z]*) ?)+( ?due:(?<due>[0-9][0-9]))?", RegexOptions.Compiled)) (onTaskList)
+    cmd "/list" (onTaskList Map.empty)
   ]
   |> ignore
 
