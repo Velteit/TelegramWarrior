@@ -7,6 +7,10 @@
         - [x] Id
         - [x] Description
         - [x] Tags
+        - [x] Priority
+        - [x] Urgency
+        - [x] Project
+        - [ ] Dates
     - [ ] UDAs
     - [ ] Annotations
 - [ ] ADD
@@ -21,9 +25,11 @@
     - [ ] Wait
     - [ ] Schedule
 - [ ] Query
-    - [ ] All
-    - [ ] By tags
+    - [x] All
+    - [x] By tags
     - [ ] Search
+    - [ ] By project
+    - [ ] By dates
 - [ ] Reminder
 - [ ] Integrations
     - [ ] Calendars
