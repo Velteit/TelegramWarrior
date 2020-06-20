@@ -48,22 +48,22 @@ let onHello context =
     |> Async.Start
   }
   |> ignore
-
+let dateFormat (date: DateTime) = date.ToString()
 let markdown (task: Task) =
   sprintf
     """*Id*: %d
+*Description*: %s
 *Urgency*: %.2f
 *Priority*: %s
-*Description*: %s
 *Project*: %s
-*Tags*: \[%s]
+*Due*: %s
 """
     (task.Id)
+    (task.Description |> Option.defaultValue "")
     (task.Urgency)
     (task.Priority |> Option.map (string) |> Option.defaultValue "")
-    (task.Description |> Option.defaultValue "")
     (task.Project |> Option.defaultValue "")
-    (String.Join(", ", task.Tags))
+    (task.Due |> Option.map dateFormat |> Option.defaultValue "")
 
 let onStart context =
   ()

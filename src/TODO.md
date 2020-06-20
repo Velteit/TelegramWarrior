@@ -16,7 +16,7 @@
 - [ ] ADD
     - [ ] Wizard
     - [ ] Fast
-    - [ ] Store
+    - [ ] Storage ?
     - [ ] Autotagging
     - [ ] Links
 - [ ] Edit
